@@ -11,7 +11,8 @@ def home():
     return "Bot is alive!"
 
 def run():
-    app.run(host='0.0.0.0', port=8080)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
     t = Thread(target=run)
@@ -29,4 +30,4 @@ def ping_self():
                 requests.get(render_url)
                 print(f"Pinged {render_url}")
         except Exception as e:
-            print(f"Ping failed: {e}") 
+            print(f"Ping failed: {e}")
