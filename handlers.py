@@ -52,7 +52,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Для поддержки, пожалуйста, свяжитесь с нами: {support_url}"
         )
     elif text == "Новостной канал":
-        news_channel_url = "https://t.me/placeholder_channel"
+        news_channel_url = "https://t.me/gpkassa1win_tj"
         await update.message.reply_text(
             f"📢 Наш новостной канал: {news_channel_url}"
         )
