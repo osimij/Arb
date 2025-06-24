@@ -23,7 +23,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "✅ Следить за новостями и акциями\n\n"
         "💬 Мы работаем 24/7 — всегда на связи!\n"
         "🎁 Бонус при первом пополнении уже ждёт вас!\n\n"
-        "---"
     )
     await update.message.reply_text(welcome_text, reply_markup=get_main_keyboard())
 
