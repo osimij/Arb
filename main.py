@@ -42,16 +42,21 @@ async def post_init(application: Application) -> None:
     ]
     await application.bot.set_my_commands(user_commands)
 
-    # Commands for the admin
+    # Commands for the admins
     admin_commands = [
         BotCommand("start", "Запустить/перезапустить бота"),
         BotCommand("addmanager", "Добавить менеджера"),
         BotCommand("delmanager", "Удалить менеджера"),
         BotCommand("listmanagers", "Показать список менеджеров"),
     ]
-    await application.bot.set_my_commands(
-        admin_commands, scope=BotCommandScopeChat(chat_id=config.ADMIN_ID)
-    )
+    # Set commands for all admins
+    for admin_id in config.ADMIN_IDS:
+        try:
+            await application.bot.set_my_commands(
+                admin_commands, scope=BotCommandScopeChat(chat_id=admin_id)
+            )
+        except Exception as e:
+            logger.error(f"Could not set commands for admin {admin_id}: {e}")
 
 
 def main() -> None:
@@ -81,8 +86,8 @@ def main() -> None:
     )
 
     # --- Register Handlers ---
-    # Create a filter for the admin
-    admin_filter = filters.User(user_id=config.ADMIN_ID)
+    # Create a filter for the admins
+    admin_filter = filters.User(user_id=config.ADMIN_IDS)
 
     # Conversation handler for adding and deleting managers
     conv_handler = ConversationHandler(

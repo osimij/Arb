@@ -2,7 +2,7 @@ from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboard
 from telegram.ext import ContextTypes, ConversationHandler
 from telegram.constants import ParseMode
 import database as db
-from config import ADMIN_ID
+from config import ADMIN_IDS
 
 # Conversation states
 WAITING_FOR_MANAGER_USERNAME = 1
@@ -71,8 +71,8 @@ async def handle_button_press(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 # --- Admin Handlers ---
 def is_admin(update: Update) -> bool:
-    """Check if the user sending the command is the admin."""
-    return update.effective_user.id == ADMIN_ID
+    """Check if the user sending the command is an admin."""
+    return update.effective_user.id in ADMIN_IDS
 
 async def add_manager_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
