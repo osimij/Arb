@@ -89,10 +89,13 @@ async def receive_manager_username(update: Update, context: ContextTypes.DEFAULT
 
     if db.add_manager(username):
         await update.message.reply_text(f"✅ Менеджер @{username} успешно добавлен.")
+        return ConversationHandler.END
     else:
-        await update.message.reply_text(f"⚠️ Менеджер @{username} уже существует в списке.")
-    
-    return ConversationHandler.END
+        await update.message.reply_text(
+            f"⚠️ Менеджер @{username} уже существует в списке.\n\n"
+            "Пожалуйста, введите другое имя пользователя или используйте /cancel для отмены."
+        )
+        return WAITING_FOR_MANAGER_USERNAME
 
 async def delete_manager_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
@@ -109,10 +112,13 @@ async def receive_delete_username(update: Update, context: ContextTypes.DEFAULT_
 
     if db.delete_manager(username):
         await update.message.reply_text(f"🗑️ Менеджер @{username} успешно удален.")
+        return ConversationHandler.END
     else:
-        await update.message.reply_text(f"⚠️ Менеджер @{username} не найден в списке.")
-    
-    return ConversationHandler.END
+        await update.message.reply_text(
+            f"⚠️ Менеджер @{username} не найден в списке.\n\n"
+            "Пожалуйста, введите другое имя пользователя или используйте /cancel для отмены."
+        )
+        return WAITING_FOR_DELETE_USERNAME
 
 async def list_managers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
