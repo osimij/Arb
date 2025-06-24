@@ -83,7 +83,7 @@ def main() -> None:
     # Text handler for reply keyboard
     application.add_handler(
         MessageHandler(
-            filters.Regex(r'^(Пополнение|Вывод|Поддержка 24/7)$'),
+            filters.Regex(r'^(Пополнить игровой баланс|Вывод|Поддержка 24/7|Новостной канал)$'),
             handle_text,
         )
     )

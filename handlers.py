@@ -7,17 +7,23 @@ from config import ADMIN_ID
 # --- Main Keyboard ---
 def get_main_keyboard():
     keyboard = [
-        [KeyboardButton("Пополнение"), KeyboardButton("Вывод")],
-        [KeyboardButton("Поддержка 24/7")],
+        [KeyboardButton("Пополнить игровой баланс"), KeyboardButton("Вывод")],
+        [KeyboardButton("Поддержка 24/7"), KeyboardButton("Новостной канал")],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 # --- User Handlers ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
-        "Добро пожаловать! 👋\n\n"
-        "Я ваш личный бот-помощник.\n\n"
-        "Выберите одну из опций ниже:"
+        "👋 Добро пожаловать в официальный бот нашей кассы 1win!\n\n"
+        "Здесь вы можете:\n"
+        "✅ Пополнить игровой счёт без задержек\n"
+        "✅ Получить бонусы при пополнении\n"
+        "✅ Быстро выводить средства\n"
+        "✅ Следить за новостями и акциями\n\n"
+        "💬 Мы работаем 24/7 — всегда на связи!\n"
+        "🎁 Бонус при первом пополнении уже ждёт вас!\n\n"
+        "---"
     )
     await update.message.reply_text(welcome_text, reply_markup=get_main_keyboard())
 
@@ -25,7 +31,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles text messages from the reply keyboard."""
     text = update.message.text
 
-    if text in ["Пополнение", "Вывод"]:
+    if text in ["Пополнить игровой баланс", "Вывод"]:
         manager = db.get_next_manager()
         if manager:
             manager_url = f"https://t.me/{manager}"
@@ -45,6 +51,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         support_url = "https://t.me/your_support_username"
         await update.message.reply_text(
             f"Для поддержки, пожалуйста, свяжитесь с нами: {support_url}"
+        )
+    elif text == "Новостной канал":
+        news_channel_url = "https://t.me/placeholder_channel"
+        await update.message.reply_text(
+            f"📢 Наш новостной канал: {news_channel_url}"
         )
 
 # This handler is no longer used by the main keyboard but might be used elsewhere.
