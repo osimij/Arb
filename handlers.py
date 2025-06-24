@@ -1,8 +1,12 @@
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, ConversationHandler
 from telegram.constants import ParseMode
 import database as db
 from config import ADMIN_ID
+
+# Conversation states
+WAITING_FOR_MANAGER_USERNAME = 1
+WAITING_FOR_DELETE_USERNAME = 2
 
 # --- Main Keyboard ---
 def get_main_keyboard():
@@ -73,13 +77,13 @@ def is_admin(update: Update) -> bool:
 async def add_manager_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
         await update.message.reply_text("У вас нет прав для выполнения этой команды.")
-        return
+        return ConversationHandler.END
 
-    if not context.args:
-        await update.message.reply_text("Пожалуйста, укажите имя пользователя менеджера. \nПример: /addmanager @newmanager")
-        return
+    await update.message.reply_text("📝 Пожалуйста, отправьте имя пользователя менеджера (с @ или без):")
+    return WAITING_FOR_MANAGER_USERNAME
 
-    username = context.args[0]
+async def receive_manager_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    username = update.message.text.strip()
     if username.startswith('@'):
         username = username[1:]
 
@@ -87,17 +91,19 @@ async def add_manager_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(f"✅ Менеджер @{username} успешно добавлен.")
     else:
         await update.message.reply_text(f"⚠️ Менеджер @{username} уже существует в списке.")
+    
+    return ConversationHandler.END
 
 async def delete_manager_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
         await update.message.reply_text("У вас нет прав для выполнения этой команды.")
-        return
+        return ConversationHandler.END
 
-    if not context.args:
-        await update.message.reply_text("Пожалуйста, укажите имя пользователя менеджера для удаления.\nПример: /delmanager @oldmanager")
-        return
+    await update.message.reply_text("🗑️ Пожалуйста, отправьте имя пользователя менеджера для удаления (с @ или без):")
+    return WAITING_FOR_DELETE_USERNAME
 
-    username = context.args[0]
+async def receive_delete_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    username = update.message.text.strip()
     if username.startswith('@'):
         username = username[1:]
 
@@ -105,6 +111,8 @@ async def delete_manager_command(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text(f"🗑️ Менеджер @{username} успешно удален.")
     else:
         await update.message.reply_text(f"⚠️ Менеджер @{username} не найден в списке.")
+    
+    return ConversationHandler.END
 
 async def list_managers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
@@ -119,4 +127,8 @@ async def list_managers_command(update: Update, context: ContextTypes.DEFAULT_TY
     message_text = "*Список текущих менеджеров:*\n\n"
     message_text += "\n".join([f"• `@{manager}`" for manager in managers])
 
-    await update.message.reply_text(message_text, parse_mode=ParseMode.MARKDOWN_V2) 
+    await update.message.reply_text(message_text, parse_mode=ParseMode.MARKDOWN_V2)
+
+async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("❌ Операция отменена.")
+    return ConversationHandler.END 

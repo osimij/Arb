@@ -3,6 +3,7 @@ from telegram import BotCommand, BotCommandScopeChat
 from telegram.ext import (
     Application,
     CommandHandler,
+    ConversationHandler,
     MessageHandler,
     filters,
 )
@@ -14,8 +15,13 @@ from handlers import (
     start,
     handle_text,
     add_manager_command,
+    receive_manager_username,
     delete_manager_command,
+    receive_delete_username,
+    cancel_conversation,
     list_managers_command,
+    WAITING_FOR_MANAGER_USERNAME,
+    WAITING_FOR_DELETE_USERNAME,
 )
 from keep_alive import keep_alive, ping_self
 
@@ -76,8 +82,27 @@ def main() -> None:
     # --- Register Handlers ---
     # Command handlers
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("addmanager", add_manager_command))
-    application.add_handler(CommandHandler("delmanager", delete_manager_command))
+    
+    # Conversation handler for adding manager
+    add_manager_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("addmanager", add_manager_command)],
+        states={
+            WAITING_FOR_MANAGER_USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_manager_username)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_conversation)],
+    )
+    application.add_handler(add_manager_conv_handler)
+    
+    # Conversation handler for deleting manager
+    delete_manager_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("delmanager", delete_manager_command)],
+        states={
+            WAITING_FOR_DELETE_USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_delete_username)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_conversation)],
+    )
+    application.add_handler(delete_manager_conv_handler)
+    
     application.add_handler(CommandHandler("listmanagers", list_managers_command))
 
     # Text handler for reply keyboard
