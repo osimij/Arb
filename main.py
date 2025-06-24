@@ -71,8 +71,9 @@ def main() -> None:
     application = (
         Application.builder()
         .token(config.TOKEN)
-        .connect_timeout(10)
-        .read_timeout(10)
+        .connect_timeout(30)
+        .read_timeout(30)
+        .write_timeout(30)
         .http_version("1.1")
         .get_updates_http_version("1.1")
         .post_init(post_init)
@@ -80,38 +81,35 @@ def main() -> None:
     )
 
     # --- Register Handlers ---
+    # Create a filter for the admin
+    admin_filter = filters.User(user_id=config.ADMIN_ID)
+
+    # Conversation handler for adding and deleting managers
+    conv_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler("addmanager", add_manager_command, filters=admin_filter),
+            CommandHandler("delmanager", delete_manager_command, filters=admin_filter),
+        ],
+        states={
+            WAITING_FOR_MANAGER_USERNAME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND & admin_filter, receive_manager_username)
+            ],
+            WAITING_FOR_DELETE_USERNAME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND & admin_filter, receive_delete_username)
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_conversation, filters=admin_filter)],
+        conversation_timeout=300,  # 5 minutes timeout
+    )
+
+    application.add_handler(conv_handler)
+    
     # Command handlers
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("listmanagers", list_managers_command, filters=admin_filter))
     
-    # Conversation handler for adding manager
-    add_manager_conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("addmanager", add_manager_command)],
-        states={
-            WAITING_FOR_MANAGER_USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_manager_username)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel_conversation)],
-    )
-    application.add_handler(add_manager_conv_handler)
-    
-    # Conversation handler for deleting manager
-    delete_manager_conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("delmanager", delete_manager_command)],
-        states={
-            WAITING_FOR_DELETE_USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_delete_username)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel_conversation)],
-    )
-    application.add_handler(delete_manager_conv_handler)
-    
-    application.add_handler(CommandHandler("listmanagers", list_managers_command))
-
-    # Text handler for reply keyboard
-    application.add_handler(
-        MessageHandler(
-            filters.Regex(r'^(Пополнить игровой баланс|Вывод|Поддержка 24/7|Новостной канал)$'),
-            handle_text,
-        )
-    )
+    # Text handler for all other text messages (including reply keyboard)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
     # --- Start the Bot ---
     logger.info("Starting bot...")
