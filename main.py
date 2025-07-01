@@ -20,6 +20,10 @@ from handlers import (
     receive_delete_username,
     cancel_conversation,
     list_managers_command,
+    deposit_command,
+    withdrawal_command,
+    add_manager_api_key,
+    list_api_keys_command,
     WAITING_FOR_MANAGER_USERNAME,
     WAITING_FOR_DELETE_USERNAME,
 )
@@ -48,6 +52,8 @@ async def post_init(application: Application) -> None:
         BotCommand("addmanager", "Добавить менеджера"),
         BotCommand("delmanager", "Удалить менеджера"),
         BotCommand("listmanagers", "Показать список менеджеров"),
+        BotCommand("addkey", "Добавить API ключ менеджеру"),
+        BotCommand("listkeys", "Показать менеджеров с API ключами"),
     ]
     # Set commands for all admins
     for admin_id in config.ADMIN_IDS:
@@ -57,6 +63,23 @@ async def post_init(application: Application) -> None:
             )
         except Exception as e:
             logger.error(f"Could not set commands for admin {admin_id}: {e}")
+    
+    # Set manager commands for all managers
+    managers = db.get_all_managers()
+    manager_commands = [
+        BotCommand("start", "Запустить/перезапустить бота"),
+        BotCommand("deposit", "Создать депозит для пользователя"),
+        BotCommand("withdrawal", "Обработать вывод для пользователя"),
+    ]
+    
+    for manager_username in managers:
+        try:
+            # Get manager's user ID (this would need to be stored or retrieved)
+            # For now, we'll skip setting commands for managers via user ID
+            # since we don't have their Telegram user IDs stored
+            pass
+        except Exception as e:
+            logger.error(f"Could not set commands for manager {manager_username}: {e}")
 
 
 def main() -> None:
@@ -112,6 +135,12 @@ def main() -> None:
     # Command handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("listmanagers", list_managers_command, filters=admin_filter))
+    application.add_handler(CommandHandler("addkey", add_manager_api_key, filters=admin_filter))
+    application.add_handler(CommandHandler("listkeys", list_api_keys_command, filters=admin_filter))
+    
+    # Manager command handlers (available to all users, but internally filtered)
+    application.add_handler(CommandHandler("deposit", deposit_command))
+    application.add_handler(CommandHandler("withdrawal", withdrawal_command))
     
     # Text handler for all other text messages (including reply keyboard)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))

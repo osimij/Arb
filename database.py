@@ -21,7 +21,7 @@ def close_db(e=None):
         local.db = None
 
 def init_db():
-    """Initializes the database and creates the 'managers' table if it doesn't exist."""
+    """Initializes the database and creates the 'managers' and 'api_keys' tables if they don't exist."""
     db = get_db()
     cursor = db.cursor()
     cursor.execute(
@@ -30,6 +30,17 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             assignment_count INTEGER DEFAULT 0
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS api_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            manager_username TEXT UNIQUE NOT NULL,
+            api_key TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (manager_username) REFERENCES managers (username) ON DELETE CASCADE
         )
         """
     )
@@ -85,4 +96,53 @@ def get_next_manager():
         db.commit()
         return manager["username"]
 
-    return None 
+    return None
+
+
+def add_api_key(manager_username, api_key):
+    """Adds or updates an API key for a manager."""
+    db = get_db()
+    cursor = db.cursor()
+    try:
+        cursor.execute(
+            "INSERT OR REPLACE INTO api_keys (manager_username, api_key) VALUES (?, ?)",
+            (manager_username, api_key)
+        )
+        db.commit()
+        return True
+    except sqlite3.Error:
+        return False
+
+
+def get_api_key(manager_username):
+    """Retrieves the API key for a specific manager."""
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT api_key FROM api_keys WHERE manager_username = ?", (manager_username,))
+    result = cursor.fetchone()
+    return result["api_key"] if result else None
+
+
+def delete_api_key(manager_username):
+    """Deletes the API key for a specific manager."""
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("DELETE FROM api_keys WHERE manager_username = ?", (manager_username,))
+    db.commit()
+    return cursor.rowcount > 0
+
+
+def get_managers_with_api_keys():
+    """Retrieves all managers who have API keys."""
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute(
+        """
+        SELECT m.username, ak.api_key, ak.created_at 
+        FROM managers m 
+        JOIN api_keys ak ON m.username = ak.manager_username 
+        ORDER BY m.id
+        """
+    )
+    return [{"username": row["username"], "api_key": row["api_key"], "created_at": row["created_at"]} 
+            for row in cursor.fetchall()] 

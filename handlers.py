@@ -3,6 +3,10 @@ from telegram.ext import ContextTypes, ConversationHandler
 from telegram.constants import ParseMode
 import database as db
 from config import ADMIN_IDS
+from api_client import WinAPIClient
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Conversation states
 WAITING_FOR_MANAGER_USERNAME = 1
@@ -137,4 +141,164 @@ async def list_managers_command(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ Операция отменена.")
-    return ConversationHandler.END 
+    return ConversationHandler.END
+
+
+# --- Manager API Commands ---
+def is_manager(username: str) -> bool:
+    """Check if the user is a manager."""
+    managers = db.get_all_managers()
+    return username in managers
+
+
+async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /deposit command for managers."""
+    username = update.effective_user.username
+    
+    if not username:
+        await update.message.reply_text("❌ У вас должен быть установлен username в Telegram для использования этой команды.")
+        return
+    
+    if not is_manager(username):
+        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
+        return
+    
+    api_key = db.get_api_key(username)
+    if not api_key:
+        await update.message.reply_text("❌ У вас нет API ключа. Обратитесь к администратору.")
+        return
+    
+    if len(context.args) != 2:
+        await update.message.reply_text(
+            "❌ Неверный формат команды.\n\n"
+            "Использование: `/deposit <user_id> <amount>`\n"
+            "Пример: `/deposit 123456 1000`",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+    
+    try:
+        user_id = int(context.args[0])
+        amount = float(context.args[1])
+        
+        if amount <= 0:
+            await update.message.reply_text("❌ Сумма должна быть больше 0.")
+            return
+        
+    except ValueError:
+        await update.message.reply_text("❌ Неверный формат данных. ID пользователя должен быть числом, сумма - числом.")
+        return
+    
+    # Show processing message
+    processing_msg = await update.message.reply_text("⏳ Обрабатываю депозит...")
+    
+    # Make API call
+    client = WinAPIClient(api_key)
+    result = await client.create_deposit(user_id, amount)
+    
+    # Update message with result
+    await processing_msg.edit_text(result["message"])
+    
+    # Log the transaction
+    logger.info(f"Deposit request by {username}: user_id={user_id}, amount={amount}, success={result['success']}")
+
+
+async def withdrawal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /withdrawal command for managers."""
+    username = update.effective_user.username
+    
+    if not username:
+        await update.message.reply_text("❌ У вас должен быть установлен username в Telegram для использования этой команды.")
+        return
+    
+    if not is_manager(username):
+        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
+        return
+    
+    api_key = db.get_api_key(username)
+    if not api_key:
+        await update.message.reply_text("❌ У вас нет API ключа. Обратитесь к администратору.")
+        return
+    
+    if len(context.args) != 2:
+        await update.message.reply_text(
+            "❌ Неверный формат команды.\n\n"
+            "Использование: `/withdrawal <user_id> <code>`\n"
+            "Пример: `/withdrawal 123456 1234`",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+    
+    try:
+        user_id = int(context.args[0])
+        code = int(context.args[1])
+        
+        if code < 0:
+            await update.message.reply_text("❌ Код должен быть положительным числом.")
+            return
+        
+    except ValueError:
+        await update.message.reply_text("❌ Неверный формат данных. ID пользователя и код должны быть числами.")
+        return
+    
+    # Show processing message
+    processing_msg = await update.message.reply_text("⏳ Обрабатываю вывод...")
+    
+    # Make API call
+    client = WinAPIClient(api_key)
+    result = await client.process_withdrawal(user_id, code)
+    
+    # Update message with result
+    await processing_msg.edit_text(result["message"])
+    
+    # Log the transaction
+    logger.info(f"Withdrawal request by {username}: user_id={user_id}, code={code}, success={result['success']}")
+
+
+async def add_manager_api_key(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command to add API key for a manager."""
+    if not is_admin(update):
+        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
+        return
+    
+    if len(context.args) != 2:
+        await update.message.reply_text(
+            "❌ Неверный формат команды.\n\n"
+            "Использование: `/addkey <manager_username> <api_key>`\n"
+            "Пример: `/addkey john_doe d6ad6a2a6a578d10a47d475eb8475ed60337d96e8b3d157d285ce3328320de76`",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+    
+    manager_username = context.args[0].lstrip('@')
+    api_key = context.args[1]
+    
+    # Check if manager exists
+    managers = db.get_all_managers()
+    if manager_username not in managers:
+        await update.message.reply_text(f"❌ Менеджер @{manager_username} не найден в системе.")
+        return
+    
+    # Add API key
+    if db.add_api_key(manager_username, api_key):
+        await update.message.reply_text(f"✅ API ключ для менеджера @{manager_username} успешно добавлен.")
+    else:
+        await update.message.reply_text(f"❌ Ошибка при добавлении API ключа для @{manager_username}.")
+
+
+async def list_api_keys_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command to list all managers with API keys."""
+    if not is_admin(update):
+        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
+        return
+    
+    managers_with_keys = db.get_managers_with_api_keys()
+    if not managers_with_keys:
+        await update.message.reply_text("📋 Нет менеджеров с API ключами.")
+        return
+    
+    message_text = "*Менеджеры с API ключами:*\n\n"
+    for manager in managers_with_keys:
+        message_text += f"• `@{manager['username']}` \\- {manager['created_at'][:10]}\n"
+    
+    await update.message.reply_text(message_text, parse_mode=ParseMode.MARKDOWN_V2) 
