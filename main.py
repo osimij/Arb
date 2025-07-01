@@ -22,8 +22,6 @@ from handlers import (
     list_managers_command,
     deposit_command,
     withdrawal_command,
-    add_manager_api_key,
-    list_api_keys_command,
     WAITING_FOR_MANAGER_USERNAME,
     WAITING_FOR_DELETE_USERNAME,
 )
@@ -52,8 +50,6 @@ async def post_init(application: Application) -> None:
         BotCommand("addmanager", "Добавить менеджера"),
         BotCommand("delmanager", "Удалить менеджера"),
         BotCommand("listmanagers", "Показать список менеджеров"),
-        BotCommand("addkey", "Добавить API ключ менеджеру"),
-        BotCommand("listkeys", "Показать менеджеров с API ключами"),
     ]
     # Set commands for all admins
     for admin_id in config.ADMIN_IDS:
@@ -135,8 +131,6 @@ def main() -> None:
     # Command handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("listmanagers", list_managers_command, filters=admin_filter))
-    application.add_handler(CommandHandler("addkey", add_manager_api_key, filters=admin_filter))
-    application.add_handler(CommandHandler("listkeys", list_api_keys_command, filters=admin_filter))
     
     # Manager command handlers (available to all users, but internally filtered)
     application.add_handler(CommandHandler("deposit", deposit_command))

@@ -22,3 +22,7 @@ if primary_admin_id_str:
     except ValueError:
         # Handle case where ADMIN_ID is not a valid integer
         print(f"Warning: ADMIN_ID environment variable ('{primary_admin_id_str}') is not a valid integer.")
+
+# --- API Configuration ---
+# Single API key shared by all managers
+API_KEY = os.environ.get("API_KEY", "your_api_key_here")
