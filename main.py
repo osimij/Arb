@@ -16,6 +16,7 @@ from handlers import (
     handle_text,
     add_manager_command,
     receive_manager_username,
+    receive_manager_message,
     delete_manager_command,
     receive_delete_username,
     cancel_conversation,
@@ -24,6 +25,7 @@ from handlers import (
     withdrawal_command,
     WAITING_FOR_MANAGER_USERNAME,
     WAITING_FOR_DELETE_USERNAME,
+    WAITING_FOR_MANAGER_MESSAGE,
 )
 from keep_alive import keep_alive, ping_self
 
@@ -60,20 +62,21 @@ async def post_init(application: Application) -> None:
         except Exception as e:
             logger.error(f"Could not set commands for admin {admin_id}: {e}")
     
-    # Set manager commands for all managers
-    managers = db.get_all_managers()
+    # Set manager commands for all managers who have user IDs
+    managers_with_ids = db.get_all_managers_with_ids()
     manager_commands = [
         BotCommand("start", "Запустить/перезапустить бота"),
         BotCommand("deposit", "Создать депозит для пользователя"),
         BotCommand("withdrawal", "Обработать вывод для пользователя"),
     ]
     
-    for manager_username in managers:
+    for manager_username, manager_user_id in managers_with_ids:
         try:
-            # Get manager's user ID (this would need to be stored or retrieved)
-            # For now, we'll skip setting commands for managers via user ID
-            # since we don't have their Telegram user IDs stored
-            pass
+            await application.bot.set_my_commands(
+                manager_commands, 
+                scope=BotCommandScopeChat(chat_id=manager_user_id)
+            )
+            logger.info(f"Set commands for manager {manager_username} (ID: {manager_user_id})")
         except Exception as e:
             logger.error(f"Could not set commands for manager {manager_username}: {e}")
 
@@ -121,9 +124,12 @@ def main() -> None:
             WAITING_FOR_DELETE_USERNAME: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND & admin_filter, receive_delete_username)
             ],
+            WAITING_FOR_MANAGER_MESSAGE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_manager_message)
+            ],
         },
         fallbacks=[CommandHandler("cancel", cancel_conversation, filters=admin_filter)],
-        conversation_timeout=300,  # 5 minutes timeout
+        conversation_timeout=600,  # 10 minutes timeout (longer for manager to respond)
     )
 
     application.add_handler(conv_handler)

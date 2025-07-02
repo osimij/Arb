@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 # Conversation states
 WAITING_FOR_MANAGER_USERNAME = 1
 WAITING_FOR_DELETE_USERNAME = 2
+WAITING_FOR_MANAGER_MESSAGE = 3
 
 # --- Main Keyboard ---
 def get_main_keyboard():
@@ -91,15 +92,97 @@ async def receive_manager_username(update: Update, context: ContextTypes.DEFAULT
     if username.startswith('@'):
         username = username[1:]
 
-    if db.add_manager(username):
-        await update.message.reply_text(f"✅ Менеджер @{username} успешно добавлен.")
-        return ConversationHandler.END
-    else:
+    # Store the username temporarily
+    context.user_data['pending_manager_username'] = username
+    
+    # Check if manager already exists
+    if username in db.get_all_managers():
         await update.message.reply_text(
             f"⚠️ Менеджер @{username} уже существует в списке.\n\n"
             "Пожалуйста, введите другое имя пользователя или используйте /cancel для отмены."
         )
         return WAITING_FOR_MANAGER_USERNAME
+    
+    await update.message.reply_text(
+        f"📝 Теперь попросите менеджера @{username} отправить любое сообщение в этот бот.\n\n"
+        f"⚠️ Важно: менеджер должен написать боту СЕЙЧАС, чтобы я мог получить его ID и настроить команды.\n\n"
+        f"После того как @{username} напишет боту, я автоматически добавлю его в список менеджеров."
+    )
+    return WAITING_FOR_MANAGER_MESSAGE
+
+async def receive_manager_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Wait for the manager to send a message to capture their user ID."""
+    manager_user_id = update.effective_user.id
+    manager_username = update.effective_user.username
+    pending_username = context.user_data.get('pending_manager_username')
+    
+    if not manager_username:
+        await update.message.reply_text(
+            "❌ У вас должен быть установлен username в Telegram.\n"
+            "Пожалуйста, установите username и попробуйте снова."
+        )
+        return WAITING_FOR_MANAGER_MESSAGE
+    
+    # Remove @ if present
+    if manager_username.startswith('@'):
+        manager_username = manager_username[1:]
+    
+    # Check if this is the expected manager
+    if manager_username.lower() != pending_username.lower():
+        await update.message.reply_text(
+            f"❌ Ожидался менеджер @{pending_username}, но сообщение пришло от @{manager_username}.\n\n"
+            f"Попросите @{pending_username} отправить сообщение в бот."
+        )
+        return WAITING_FOR_MANAGER_MESSAGE
+    
+    # Add manager with user ID
+    if db.add_manager(manager_username, manager_user_id):
+        # Set commands for this manager
+        try:
+            from telegram import BotCommand, BotCommandScopeChat
+            manager_commands = [
+                BotCommand("start", "Запустить/перезапустить бота"),
+                BotCommand("deposit", "Создать депозит для пользователя"),
+                BotCommand("withdrawal", "Обработать вывод для пользователя"),
+            ]
+            await context.bot.set_my_commands(
+                manager_commands, 
+                scope=BotCommandScopeChat(chat_id=manager_user_id)
+            )
+            
+            await update.message.reply_text(
+                f"✅ Добро пожаловать, @{manager_username}!\n\n"
+                f"Вы успешно добавлены как менеджер. Теперь у вас есть доступ к командам:\n"
+                f"• /deposit - создать депозит\n"
+                f"• /withdrawal - обработать вывод\n\n"
+                f"Команды появятся в вашем меню команд."
+            )
+            
+            # Notify the admin who added the manager
+            for admin_id in ADMIN_IDS:
+                try:
+                    await context.bot.send_message(
+                        chat_id=admin_id,
+                        text=f"✅ Менеджер @{manager_username} (ID: {manager_user_id}) успешно добавлен и команды настроены!"
+                    )
+                except:
+                    pass  # Admin might have blocked the bot
+            
+            return ConversationHandler.END
+            
+        except Exception as e:
+            logger.error(f"Error setting commands for manager {manager_username}: {e}")
+            await update.message.reply_text(
+                f"✅ Менеджер @{manager_username} добавлен, но произошла ошибка при настройке команд.\n"
+                f"Обратитесь к администратору."
+            )
+            return ConversationHandler.END
+    else:
+        await update.message.reply_text(
+            f"❌ Ошибка при добавлении менеджера @{manager_username}.\n"
+            f"Возможно, он уже существует в списке."
+        )
+        return ConversationHandler.END
 
 async def delete_manager_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
@@ -145,29 +228,43 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 # --- Manager API Commands ---
-def is_manager(username: str) -> bool:
-    """Check if the user is a manager."""
-    managers = db.get_all_managers()
-    return username in managers
+def is_manager(username: str = None, user_id: int = None) -> bool:
+    """Check if the user is a manager by username or user_id."""
+    if user_id:
+        # Check by user_id first (more reliable)
+        return db.is_manager_by_user_id(user_id) is not None
+    elif username:
+        # Fallback to username check
+        managers = db.get_all_managers()
+        return username in managers
+    return False
 
 
 async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /deposit command for managers."""
     username = update.effective_user.username
+    user_id_telegram = update.effective_user.id
+    
+    # Log the command attempt
+    logger.info(f"Deposit command attempted by user: {username} (ID: {user_id_telegram})")
     
     if not username:
         await update.message.reply_text("❌ У вас должен быть установлен username в Telegram для использования этой команды.")
         return
     
-    if not is_manager(username):
-        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
+    if not is_manager(username=username, user_id=user_id_telegram):
+        managers_list = db.get_all_managers()
+        logger.warning(f"User {username} (ID: {user_id_telegram}) not found in managers list. Current managers: {managers_list}")
+        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды. Обратитесь к администратору для добавления в список менеджеров.")
         return
     
     if len(context.args) != 2:
         await update.message.reply_text(
             "❌ Неверный формат команды.\n\n"
             "Использование: `/deposit <user_id> <amount>`\n"
-            "Пример: `/deposit 123456 1000`",
+            "Пример: `/deposit 123456 1000`\n\n"
+            "user_id - ID пользователя в системе 1win\n"
+            "amount - сумма депозита",
             parse_mode=ParseMode.MARKDOWN
         )
         return
@@ -187,34 +284,50 @@ async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Show processing message
     processing_msg = await update.message.reply_text("⏳ Обрабатываю депозит...")
     
+    # Log the API call attempt
+    logger.info(f"Making API call for deposit: user_id={user_id}, amount={amount}, api_key={'*' * 10 + API_KEY[-10:] if API_KEY else 'NOT_SET'}")
+    
     # Make API call
-    client = WinAPIClient(API_KEY)
-    result = await client.create_deposit(user_id, amount)
-    
-    # Update message with result
-    await processing_msg.edit_text(result["message"])
-    
-    # Log the transaction
-    logger.info(f"Deposit request by {username}: user_id={user_id}, amount={amount}, success={result['success']}")
+    try:
+        client = WinAPIClient(API_KEY)
+        result = await client.create_deposit(user_id, amount)
+        
+        # Update message with result
+        await processing_msg.edit_text(result["message"])
+        
+        # Log the transaction
+        logger.info(f"Deposit request by {username}: user_id={user_id}, amount={amount}, success={result['success']}")
+        
+    except Exception as e:
+        logger.error(f"Error in deposit command: {e}")
+        await processing_msg.edit_text(f"❌ Произошла ошибка при обработке депозита: {str(e)}")
 
 
 async def withdrawal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /withdrawal command for managers."""
     username = update.effective_user.username
+    user_id_telegram = update.effective_user.id
+    
+    # Log the command attempt
+    logger.info(f"Withdrawal command attempted by user: {username} (ID: {user_id_telegram})")
     
     if not username:
         await update.message.reply_text("❌ У вас должен быть установлен username в Telegram для использования этой команды.")
         return
     
-    if not is_manager(username):
-        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды.")
+    if not is_manager(username=username, user_id=user_id_telegram):
+        managers_list = db.get_all_managers()
+        logger.warning(f"User {username} (ID: {user_id_telegram}) not found in managers list. Current managers: {managers_list}")
+        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды. Обратитесь к администратору для добавления в список менеджеров.")
         return
     
     if len(context.args) != 2:
         await update.message.reply_text(
             "❌ Неверный формат команды.\n\n"
             "Использование: `/withdrawal <user_id> <code>`\n"
-            "Пример: `/withdrawal 123456 1234`",
+            "Пример: `/withdrawal 123456 1234`\n\n"
+            "user_id - ID пользователя в системе 1win\n"
+            "code - код подтверждения от пользователя",
             parse_mode=ParseMode.MARKDOWN
         )
         return
@@ -234,15 +347,23 @@ async def withdrawal_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # Show processing message
     processing_msg = await update.message.reply_text("⏳ Обрабатываю вывод...")
     
+    # Log the API call attempt
+    logger.info(f"Making API call for withdrawal: user_id={user_id}, code={code}, api_key={'*' * 10 + API_KEY[-10:] if API_KEY else 'NOT_SET'}")
+    
     # Make API call
-    client = WinAPIClient(API_KEY)
-    result = await client.process_withdrawal(user_id, code)
-    
-    # Update message with result
-    await processing_msg.edit_text(result["message"])
-    
-    # Log the transaction
-    logger.info(f"Withdrawal request by {username}: user_id={user_id}, code={code}, success={result['success']}")
+    try:
+        client = WinAPIClient(API_KEY)
+        result = await client.process_withdrawal(user_id, code)
+        
+        # Update message with result
+        await processing_msg.edit_text(result["message"])
+        
+        # Log the transaction
+        logger.info(f"Withdrawal request by {username}: user_id={user_id}, code={code}, success={result['success']}")
+        
+    except Exception as e:
+        logger.error(f"Error in withdrawal command: {e}")
+        await processing_msg.edit_text(f"❌ Произошла ошибка при обработке вывода: {str(e)}")
 
 
  
