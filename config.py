@@ -25,4 +25,4 @@ if primary_admin_id_str:
 
 # --- API Configuration ---
 # Single API key shared by all managers
-API_KEY = os.environ.get("API_KEY", "your_api_key_here")
+API_KEY = os.environ.get("API_KEY", "2d329336c2f4c0612b96ce032ed081dec1ce0ee9805182f6a7f047e220ab06cb")
