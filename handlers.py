@@ -31,26 +31,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Check if user is a manager
     if is_manager(username=username, user_id=user.id):
-        welcome_text = (
-            f"🎯 Добро пожаловать, менеджер @{username}!\n\n"
-            f"Доступные команды:\n"
-            f"• /deposit <user_id> <amount> - создать депозит\n"
-            f"• /withdrawal <user_id> <code> - обработать вывод\n\n"
-            f"Пример использования:\n"
-            f"`/deposit 123456 1000`\n"
-            f"`/withdrawal 123456 1234`"
+        # Manager welcome message
+        await update.message.reply_text(
+            f"🔧 **Добро пожаловать, менеджер {username}!**\n\n"
+            f"📋 **Доступные команды:**\n"
+            f"• `/deposit <user_id> <amount>` - создать депозит\n"
+            f"• `/withdrawal <user_id> <code>` - обработать вывод\n\n"
+            f"💡 **Все команды работают сразу, подтверждение не требуется!**",
+            reply_markup=get_main_keyboard(),
+            parse_mode="Markdown"
         )
-        await update.message.reply_text(welcome_text, parse_mode=ParseMode.MARKDOWN)
-        return
-    
-    # Regular user welcome
-    welcome_text = (
-        f"🎰 Добро пожаловать в бот 1win!\n\n"
-        f"Привет, {user.first_name}! 👋\n\n"
-        f"Выберите нужную опцию:"
-    )
-    
-    await update.message.reply_text(welcome_text, reply_markup=get_main_keyboard())
+    else:
+        # Regular user welcome message - restored original detailed version
+        await update.message.reply_text(
+            "👋 Добро пожаловать в официальный бот нашей кассы 1win!\n\n"
+            "Здесь вы можете:\n"
+            "✅ Пополнить игровой счёт без задержек\n"
+            "✅ Получить бонусы при пополнении\n"
+            "✅ Быстро выводить средства\n"
+            "✅ Следить за новостями и акциями\n\n"
+            "💬 Мы работаем 24/7 — всегда на связи!\n"
+            "🎁 Бонус при первом пополнении уже ждёт вас!",
+            reply_markup=get_main_keyboard()
+        )
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
