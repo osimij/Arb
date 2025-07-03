@@ -1,6 +1,10 @@
 import os
 
-TOKEN = os.environ.get("BOT_TOKEN", "7312413389:AAH1djA4FKjIGJwXMWmyOHORT5qckScq52U")
+# ⚠️ NEVER hardcode tokens in production! 
+# Use environment variables only.
+TOKEN = os.environ.get("BOT_TOKEN")
+if not TOKEN:
+    raise ValueError("BOT_TOKEN environment variable is required!")
 
 # --- Multi-Admin Configuration ---
 
@@ -25,5 +29,7 @@ if primary_admin_id_str:
         print(f"Warning: ADMIN_ID environment variable ('{primary_admin_id_str}') is not a valid integer.")
 
 # --- API Configuration ---
-# Single API key shared by all managers
-API_KEY = os.environ.get("API_KEY", "2d329336c2f4c0612b96ce032ed081dec1ce0ee9805182f6a7f047e220ab06cb")
+# API key from environment variable only
+API_KEY = os.environ.get("API_KEY")
+if not API_KEY:
+    raise ValueError("API_KEY environment variable is required!")
