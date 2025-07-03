@@ -8,6 +8,7 @@ from telegram.ext import (
     filters,
 )
 from threading import Thread
+import os
 
 import config
 import database as db
@@ -38,15 +39,19 @@ async def post_init(application: Application) -> None:
     """
     Post-initialization function to set bot commands.
     """
-    # Commands for regular users
+    # Commands for regular users (including manager commands visible to all)
     user_commands = [
         BotCommand("start", "Запустить/перезапустить бота"),
+        BotCommand("deposit", "Создать депозит (только для менеджеров)"),
+        BotCommand("withdrawal", "Обработать вывод (только для менеджеров)"),
     ]
     await application.bot.set_my_commands(user_commands)
 
-    # Commands for the admins
+    # Commands for the admins (includes all commands)
     admin_commands = [
         BotCommand("start", "Запустить/перезапустить бота"),
+        BotCommand("deposit", "Создать депозит (только для менеджеров)"),
+        BotCommand("withdrawal", "Обработать вывод (только для менеджеров)"),
         BotCommand("addmanager", "Добавить менеджера"),
         BotCommand("delmanager", "Удалить менеджера"),
         BotCommand("listmanagers", "Показать список менеджеров"),
@@ -63,13 +68,17 @@ async def post_init(application: Application) -> None:
 
 def main() -> None:
     """Run the bot."""
-    # Start the keep-alive server
-    keep_alive()
-    
-    # Start the self-pinging thread
-    ping_thread = Thread(target=ping_self)
-    ping_thread.daemon = True
-    ping_thread.start()
+    # Only start keep-alive and ping for Render deployment (not local testing)
+    if os.environ.get('RENDER'):
+        # Start the keep-alive server
+        keep_alive()
+        
+        # Start the self-pinging thread
+        ping_thread = Thread(target=ping_self)
+        ping_thread.daemon = True
+        ping_thread.start()
+    else:
+        logger.info("Running in local mode - skipping keep-alive and ping")
     
     # Initialize the database
     db.init_db()
