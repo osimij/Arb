@@ -207,6 +207,74 @@ async def receive_delete_username(update: Update, context: ContextTypes.DEFAULT_
         )
         return WAITING_FOR_DELETE_USERNAME
 
+async def migrate_manager_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Allow existing managers to register their user ID"""
+    user_id = update.effective_user.id
+    username = update.effective_user.username
+    
+    if not username:
+        await update.message.reply_text(
+            "❌ У вас должен быть установлен username в Telegram для использования команд менеджера."
+        )
+        return
+    
+    # Remove @ if present
+    if username.startswith('@'):
+        username = username[1:]
+    
+    # Check if this username exists in managers but without user_id
+    all_managers = db.get_all_managers()
+    managers_with_ids = [m[0] for m in db.get_all_managers_with_ids()]
+    
+    if username in all_managers and username not in managers_with_ids:
+        # Update the manager with user_id
+        if db.update_manager_user_id(username, user_id):
+            # Set commands for this manager
+            try:
+                from telegram import BotCommand, BotCommandScopeChat
+                manager_commands = [
+                    BotCommand("start", "Запустить/перезапустить бота"),
+                    BotCommand("deposit", "Создать депозит для пользователя"),
+                    BotCommand("withdrawal", "Обработать вывод для пользователя"),
+                ]
+                await context.bot.set_my_commands(
+                    manager_commands, 
+                    scope=BotCommandScopeChat(chat_id=user_id)
+                )
+                
+                await update.message.reply_text(
+                    f"✅ Добро пожаловать, @{username}!\n\n"
+                    f"Ваш аккаунт менеджера успешно активирован. Теперь у вас есть доступ к командам:\n"
+                    f"• /deposit - создать депозит\n"
+                    f"• /withdrawal - обработать вывод\n\n"
+                    f"Команды появятся в вашем меню команд."
+                )
+                
+                # Notify admins
+                for admin_id in ADMIN_IDS:
+                    try:
+                        await context.bot.send_message(
+                            chat_id=admin_id,
+                            text=f"✅ Менеджер @{username} (ID: {user_id}) активировал свой аккаунт!"
+                        )
+                    except:
+                        pass
+            except Exception as e:
+                logger.error(f"Error setting commands for manager {username}: {e}")
+                await update.message.reply_text(
+                    f"✅ Ваш аккаунт активирован, но произошла ошибка при настройке команд.\n"
+                    f"Обратитесь к администратору."
+                )
+        else:
+            await update.message.reply_text("❌ Ошибка при активации аккаунта.")
+    elif username in managers_with_ids:
+        await update.message.reply_text("✅ Ваш аккаунт менеджера уже активирован!")
+    else:
+        await update.message.reply_text(
+            f"❌ Пользователь @{username} не найден в списке менеджеров.\n"
+            f"Обратитесь к администратору для добавления в список."
+        )
+
 async def list_managers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
         await update.message.reply_text("У вас нет прав для выполнения этой команды.")

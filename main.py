@@ -21,6 +21,7 @@ from handlers import (
     receive_delete_username,
     cancel_conversation,
     list_managers_command,
+    migrate_manager_command,
     deposit_command,
     withdrawal_command,
     WAITING_FOR_MANAGER_USERNAME,
@@ -52,6 +53,7 @@ async def post_init(application: Application) -> None:
         BotCommand("addmanager", "Добавить менеджера"),
         BotCommand("delmanager", "Удалить менеджера"),
         BotCommand("listmanagers", "Показать список менеджеров"),
+        BotCommand("migrate", "Для менеджеров: активировать аккаунт"),
     ]
     # Set commands for all admins
     for admin_id in config.ADMIN_IDS:
@@ -141,6 +143,7 @@ def main() -> None:
     # Manager command handlers (available to all users, but internally filtered)
     application.add_handler(CommandHandler("deposit", deposit_command))
     application.add_handler(CommandHandler("withdrawal", withdrawal_command))
+    application.add_handler(CommandHandler("migrate", migrate_manager_command))
     
     # Text handler for all other text messages (including reply keyboard)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
