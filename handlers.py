@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 # Conversation states
 WAITING_FOR_MANAGER_USERNAME = 1
 WAITING_FOR_DELETE_USERNAME = 2
-WAITING_FOR_MANAGER_MESSAGE = 3
 
 # --- Main Keyboard ---
 def get_main_keyboard():
@@ -21,49 +20,76 @@ def get_main_keyboard():
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# --- User Handlers ---
+# --- Helper Functions ---
+def is_admin(update):
+    return update.effective_user.id in ADMIN_IDS
+
+# --- Command Handlers ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    username = user.username or "Unknown"
+    
+    # Check if user is a manager
+    if is_manager(username=username, user_id=user.id):
+        welcome_text = (
+            f"🎯 Добро пожаловать, менеджер @{username}!\n\n"
+            f"Доступные команды:\n"
+            f"• /deposit <user_id> <amount> - создать депозит\n"
+            f"• /withdrawal <user_id> <code> - обработать вывод\n\n"
+            f"Пример использования:\n"
+            f"`/deposit 123456 1000`\n"
+            f"`/withdrawal 123456 1234`"
+        )
+        await update.message.reply_text(welcome_text, parse_mode=ParseMode.MARKDOWN)
+        return
+    
+    # Regular user welcome
     welcome_text = (
-        "👋 Добро пожаловать в официальный бот нашей кассы 1win!\n\n"
-        "Здесь вы можете:\n"
-        "✅ Пополнить игровой счёт без задержек\n"
-        "✅ Получить бонусы при пополнении\n"
-        "✅ Быстро выводить средства\n"
-        "✅ Следить за новостями и акциями\n\n"
-        "💬 Мы работаем 24/7 — всегда на связи!\n"
-        "🎁 Бонус при первом пополнении уже ждёт вас!\n\n"
+        f"🎰 Добро пожаловать в бот 1win!\n\n"
+        f"Привет, {user.first_name}! 👋\n\n"
+        f"Выберите нужную опцию:"
     )
+    
     await update.message.reply_text(welcome_text, reply_markup=get_main_keyboard())
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles text messages from the reply keyboard."""
     text = update.message.text
-
-    if text in ["Пополнить игровой баланс", "Вывод"]:
-        manager = db.get_next_manager()
-        if manager:
-            manager_url = f"https://t.me/{manager}"
-            inline_keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton(text="Связаться с менеджером", url=manager_url)]
-            ])
-            await update.message.reply_text(
-                text="Перенаправляю вас к менеджеру.",
-                reply_markup=inline_keyboard,
-            )
-        else:
-            await update.message.reply_text(
-                text="К сожалению, в данный момент нет доступных менеджеров. Пожалуйста, попробуйте позже.",
-            )
-    elif text == "Поддержка 24/7":
-        # You can replace this with your actual support username
-        support_url = "https://t.me/your_support_username"
+    
+    if text == "Пополнить игровой баланс":
         await update.message.reply_text(
-            f"Для поддержки, пожалуйста, свяжитесь с нами: {support_url}"
+            "💰 **Пополнение баланса**\n\n"
+            "Для пополнения баланса обратитесь к нашему менеджеру:\n"
+            "@manager_username\n\n"
+            "Менеджер поможет вам с пополнением счета!",
+            parse_mode=ParseMode.MARKDOWN
+        )
+    elif text == "Вывод":
+        await update.message.reply_text(
+            "💸 **Вывод средств**\n\n"
+            "Для вывода средств обратитесь к нашему менеджеру:\n"
+            "@manager_username\n\n"
+            "Менеджер обработает ваш запрос на вывод!",
+            parse_mode=ParseMode.MARKDOWN
+        )
+    elif text == "Поддержка 24/7":
+        await update.message.reply_text(
+            "🆘 **Техническая поддержка**\n\n"
+            "Наша поддержка работает 24/7!\n"
+            "Обращайтесь: @support_username",
+            parse_mode=ParseMode.MARKDOWN
         )
     elif text == "Новостной канал":
-        news_channel_url = "https://t.me/gpkassa1win_tj"
         await update.message.reply_text(
-            f"📢 Наш новостной канал: {news_channel_url}"
+            "📢 **Новости и обновления**\n\n"
+            "Подписывайтесь на наш канал:\n"
+            "@news_channel\n\n"
+            "Там вы найдете последние новости и акции!",
+            parse_mode=ParseMode.MARKDOWN
+        )
+    else:
+        await update.message.reply_text(
+            "Пожалуйста, используйте кнопки меню для навигации.",
+            reply_markup=get_main_keyboard()
         )
 
 # This handler is no longer used by the main keyboard but might be used elsewhere.
@@ -75,10 +101,6 @@ async def handle_button_press(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.edit_message_text(text="This action is now handled by the main keyboard buttons.")
 
 # --- Admin Handlers ---
-def is_admin(update: Update) -> bool:
-    """Check if the user sending the command is an admin."""
-    return update.effective_user.id in ADMIN_IDS
-
 async def add_manager_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
         await update.message.reply_text("У вас нет прав для выполнения этой команды.")
@@ -92,9 +114,6 @@ async def receive_manager_username(update: Update, context: ContextTypes.DEFAULT
     if username.startswith('@'):
         username = username[1:]
 
-    # Store the username temporarily
-    context.user_data['pending_manager_username'] = username
-    
     # Check if manager already exists
     if username in db.get_all_managers():
         await update.message.reply_text(
@@ -103,83 +122,19 @@ async def receive_manager_username(update: Update, context: ContextTypes.DEFAULT
         )
         return WAITING_FOR_MANAGER_USERNAME
     
-    await update.message.reply_text(
-        f"📝 Теперь попросите менеджера @{username} отправить любое сообщение в этот бот.\n\n"
-        f"⚠️ Важно: менеджер должен написать боту СЕЙЧАС, чтобы я мог получить его ID и настроить команды.\n\n"
-        f"После того как @{username} напишет боту, я автоматически добавлю его в список менеджеров."
-    )
-    return WAITING_FOR_MANAGER_MESSAGE
-
-async def receive_manager_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Wait for the manager to send a message to capture their user ID."""
-    manager_user_id = update.effective_user.id
-    manager_username = update.effective_user.username
-    pending_username = context.user_data.get('pending_manager_username')
-    
-    if not manager_username:
+    # Automatically add manager without requiring them to message first
+    if db.add_manager(username):
         await update.message.reply_text(
-            "❌ У вас должен быть установлен username в Telegram.\n"
-            "Пожалуйста, установите username и попробуйте снова."
+            f"✅ Менеджер @{username} успешно добавлен!\n\n"
+            f"Теперь @{username} может использовать команды:\n"
+            f"• /deposit <user_id> <amount> - создать депозит\n"
+            f"• /withdrawal <user_id> <code> - обработать вывод\n\n"
+            f"💡 Команды работают сразу, подтверждение не требуется!"
         )
-        return WAITING_FOR_MANAGER_MESSAGE
-    
-    # Remove @ if present
-    if manager_username.startswith('@'):
-        manager_username = manager_username[1:]
-    
-    # Check if this is the expected manager
-    if manager_username.lower() != pending_username.lower():
-        await update.message.reply_text(
-            f"❌ Ожидался менеджер @{pending_username}, но сообщение пришло от @{manager_username}.\n\n"
-            f"Попросите @{pending_username} отправить сообщение в бот."
-        )
-        return WAITING_FOR_MANAGER_MESSAGE
-    
-    # Add manager with user ID
-    if db.add_manager(manager_username, manager_user_id):
-        # Set commands for this manager
-        try:
-            from telegram import BotCommand, BotCommandScopeChat
-            manager_commands = [
-                BotCommand("start", "Запустить/перезапустить бота"),
-                BotCommand("deposit", "Создать депозит для пользователя"),
-                BotCommand("withdrawal", "Обработать вывод для пользователя"),
-            ]
-            await context.bot.set_my_commands(
-                manager_commands, 
-                scope=BotCommandScopeChat(chat_id=manager_user_id)
-            )
-            
-            await update.message.reply_text(
-                f"✅ Добро пожаловать, @{manager_username}!\n\n"
-                f"Вы успешно добавлены как менеджер. Теперь у вас есть доступ к командам:\n"
-                f"• /deposit - создать депозит\n"
-                f"• /withdrawal - обработать вывод\n\n"
-                f"Команды появятся в вашем меню команд."
-            )
-            
-            # Notify the admin who added the manager
-            for admin_id in ADMIN_IDS:
-                try:
-                    await context.bot.send_message(
-                        chat_id=admin_id,
-                        text=f"✅ Менеджер @{manager_username} (ID: {manager_user_id}) успешно добавлен и команды настроены!"
-                    )
-                except:
-                    pass  # Admin might have blocked the bot
-            
-            return ConversationHandler.END
-            
-        except Exception as e:
-            logger.error(f"Error setting commands for manager {manager_username}: {e}")
-            await update.message.reply_text(
-                f"✅ Менеджер @{manager_username} добавлен, но произошла ошибка при настройке команд.\n"
-                f"Обратитесь к администратору."
-            )
-            return ConversationHandler.END
+        return ConversationHandler.END
     else:
         await update.message.reply_text(
-            f"❌ Ошибка при добавлении менеджера @{manager_username}.\n"
+            f"❌ Ошибка при добавлении менеджера @{username}.\n"
             f"Возможно, он уже существует в списке."
         )
         return ConversationHandler.END
@@ -198,82 +153,15 @@ async def receive_delete_username(update: Update, context: ContextTypes.DEFAULT_
         username = username[1:]
 
     if db.delete_manager(username):
-        await update.message.reply_text(f"🗑️ Менеджер @{username} успешно удален.")
-        return ConversationHandler.END
+        await update.message.reply_text(f"✅ Менеджер @{username} успешно удален из списка.")
     else:
-        await update.message.reply_text(
-            f"⚠️ Менеджер @{username} не найден в списке.\n\n"
-            "Пожалуйста, введите другое имя пользователя или используйте /cancel для отмены."
-        )
-        return WAITING_FOR_DELETE_USERNAME
+        await update.message.reply_text(f"❌ Менеджер @{username} не найден в списке.")
+    
+    return ConversationHandler.END
 
-async def migrate_manager_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Allow existing managers to register their user ID"""
-    user_id = update.effective_user.id
-    username = update.effective_user.username
-    
-    if not username:
-        await update.message.reply_text(
-            "❌ У вас должен быть установлен username в Telegram для использования команд менеджера."
-        )
-        return
-    
-    # Remove @ if present
-    if username.startswith('@'):
-        username = username[1:]
-    
-    # Check if this username exists in managers but without user_id
-    all_managers = db.get_all_managers()
-    managers_with_ids = [m[0] for m in db.get_all_managers_with_ids()]
-    
-    if username in all_managers and username not in managers_with_ids:
-        # Update the manager with user_id
-        if db.update_manager_user_id(username, user_id):
-            # Set commands for this manager
-            try:
-                from telegram import BotCommand, BotCommandScopeChat
-                manager_commands = [
-                    BotCommand("start", "Запустить/перезапустить бота"),
-                    BotCommand("deposit", "Создать депозит для пользователя"),
-                    BotCommand("withdrawal", "Обработать вывод для пользователя"),
-                ]
-                await context.bot.set_my_commands(
-                    manager_commands, 
-                    scope=BotCommandScopeChat(chat_id=user_id)
-                )
-                
-                await update.message.reply_text(
-                    f"✅ Добро пожаловать, @{username}!\n\n"
-                    f"Ваш аккаунт менеджера успешно активирован. Теперь у вас есть доступ к командам:\n"
-                    f"• /deposit - создать депозит\n"
-                    f"• /withdrawal - обработать вывод\n\n"
-                    f"Команды появятся в вашем меню команд."
-                )
-                
-                # Notify admins
-                for admin_id in ADMIN_IDS:
-                    try:
-                        await context.bot.send_message(
-                            chat_id=admin_id,
-                            text=f"✅ Менеджер @{username} (ID: {user_id}) активировал свой аккаунт!"
-                        )
-                    except:
-                        pass
-            except Exception as e:
-                logger.error(f"Error setting commands for manager {username}: {e}")
-                await update.message.reply_text(
-                    f"✅ Ваш аккаунт активирован, но произошла ошибка при настройке команд.\n"
-                    f"Обратитесь к администратору."
-                )
-        else:
-            await update.message.reply_text("❌ Ошибка при активации аккаунта.")
-    elif username in managers_with_ids:
-        await update.message.reply_text("✅ Ваш аккаунт менеджера уже активирован!")
-    else:
-        await update.message.reply_text(
-            f"❌ Пользователь @{username} не найден в списке менеджеров.\n"
-            f"Обратитесь к администратору для добавления в список."
-        )
+async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Операция отменена.")
+    return ConversationHandler.END
 
 async def list_managers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
@@ -290,19 +178,14 @@ async def list_managers_command(update: Update, context: ContextTypes.DEFAULT_TY
 
     await update.message.reply_text(message_text, parse_mode=ParseMode.MARKDOWN_V2)
 
-async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ Операция отменена.")
-    return ConversationHandler.END
-
 
 # --- Manager API Commands ---
 def is_manager(username: str = None, user_id: int = None) -> bool:
-    """Check if the user is a manager by username or user_id."""
-    if user_id:
-        # Check by user_id first (more reliable)
-        return db.is_manager_by_user_id(user_id) is not None
-    elif username:
-        # Fallback to username check
+    """Check if the user is a manager by username."""
+    if username:
+        # Remove @ if present
+        if username.startswith('@'):
+            username = username[1:]
         managers = db.get_all_managers()
         return username in managers
     return False
@@ -317,22 +200,34 @@ async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Deposit command attempted by user: {username} (ID: {user_id_telegram})")
     
     if not username:
-        await update.message.reply_text("❌ У вас должен быть установлен username в Telegram для использования этой команды.")
+        await update.message.reply_text(
+            "❌ У вас должен быть установлен username в Telegram для использования этой команды.\n\n"
+            "💡 Как установить username:\n"
+            "1. Откройте настройки Telegram\n"
+            "2. Нажмите 'Имя пользователя'\n"
+            "3. Введите желаемое имя пользователя"
+        )
         return
     
     if not is_manager(username=username, user_id=user_id_telegram):
-        managers_list = db.get_all_managers()
-        logger.warning(f"User {username} (ID: {user_id_telegram}) not found in managers list. Current managers: {managers_list}")
-        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды. Обратитесь к администратору для добавления в список менеджеров.")
+        await update.message.reply_text(
+            "❌ У вас нет прав для выполнения этой команды.\n\n"
+            "Обратитесь к администратору для добавления в список менеджеров."
+        )
         return
     
     if len(context.args) != 2:
         await update.message.reply_text(
-            "❌ Неверный формат команды.\n\n"
-            "Использование: `/deposit <user_id> <amount>`\n"
-            "Пример: `/deposit 123456 1000`\n\n"
-            "user_id - ID пользователя в системе 1win\n"
-            "amount - сумма депозита",
+            "❌ Неверный формат команды!\n\n"
+            "**Правильное использование:**\n"
+            "`/deposit <user_id> <amount>`\n\n"
+            "**Примеры:**\n"
+            "`/deposit 123456 1000` - депозит 1000 для пользователя 123456\n"
+            "`/deposit 789012 500.50` - депозит 500.50 для пользователя 789012\n\n"
+            "**Где взять user_id:**\n"
+            "• ID пользователя в системе 1win\n"
+            "• Обычно это 6-10 цифр\n"
+            "• Уточните у пользователя его ID в приложении 1win",
             parse_mode=ParseMode.MARKDOWN
         )
         return
@@ -342,18 +237,44 @@ async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         amount = float(context.args[1])
         
         if amount <= 0:
-            await update.message.reply_text("❌ Сумма должна быть больше 0.")
+            await update.message.reply_text(
+                "❌ Сумма должна быть больше 0!\n\n"
+                "Попробуйте ввести положительную сумму, например: `/deposit 123456 1000`",
+                parse_mode=ParseMode.MARKDOWN
+            )
             return
         
+        if amount > 1000000:  # 1 million limit for safety
+            await update.message.reply_text(
+                "❌ Слишком большая сумма!\n\n"
+                "Максимальная сумма депозита: 1,000,000\n"
+                "Попробуйте меньшую сумму."
+            )
+            return
+            
     except ValueError:
-        await update.message.reply_text("❌ Неверный формат данных. ID пользователя должен быть числом, сумма - числом.")
+        await update.message.reply_text(
+            "❌ Неверный формат данных!\n\n"
+            "**Проверьте:**\n"
+            "• user_id должен быть целым числом (например: 123456)\n"
+            "• amount должен быть числом (например: 1000 или 500.50)\n\n"
+            "**Правильный пример:**\n"
+            "`/deposit 123456 1000`",
+            parse_mode=ParseMode.MARKDOWN
+        )
         return
     
     # Show processing message
-    processing_msg = await update.message.reply_text("⏳ Обрабатываю депозит...")
+    processing_msg = await update.message.reply_text(
+        f"⏳ **Обрабатываю депозит...**\n\n"
+        f"👤 Пользователь: `{user_id}`\n"
+        f"💰 Сумма: `{amount}`\n"
+        f"🔄 Отправляю запрос в 1win...",
+        parse_mode=ParseMode.MARKDOWN
+    )
     
     # Log the API call attempt
-    logger.info(f"Making API call for deposit: user_id={user_id}, amount={amount}, api_key={'*' * 10 + API_KEY[-10:] if API_KEY else 'NOT_SET'}")
+    logger.info(f"Making API call for deposit: user_id={user_id}, amount={amount}")
     
     # Make API call
     try:
@@ -361,14 +282,23 @@ async def deposit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = await client.create_deposit(user_id, amount)
         
         # Update message with result
-        await processing_msg.edit_text(result["message"])
+        await processing_msg.edit_text(result["message"], parse_mode=ParseMode.MARKDOWN)
         
         # Log the transaction
         logger.info(f"Deposit request by {username}: user_id={user_id}, amount={amount}, success={result['success']}")
         
     except Exception as e:
         logger.error(f"Error in deposit command: {e}")
-        await processing_msg.edit_text(f"❌ Произошла ошибка при обработке депозита: {str(e)}")
+        await processing_msg.edit_text(
+            f"❌ **Произошла ошибка при обработке депозита**\n\n"
+            f"**Техническая информация:**\n"
+            f"`{str(e)}`\n\n"
+            f"💡 **Что делать:**\n"
+            f"• Попробуйте еще раз через минуту\n"
+            f"• Проверьте правильность данных\n"
+            f"• Обратитесь к администратору, если проблема повторяется",
+            parse_mode=ParseMode.MARKDOWN
+        )
 
 
 async def withdrawal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -380,22 +310,35 @@ async def withdrawal_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     logger.info(f"Withdrawal command attempted by user: {username} (ID: {user_id_telegram})")
     
     if not username:
-        await update.message.reply_text("❌ У вас должен быть установлен username в Telegram для использования этой команды.")
+        await update.message.reply_text(
+            "❌ У вас должен быть установлен username в Telegram для использования этой команды.\n\n"
+            "💡 Как установить username:\n"
+            "1. Откройте настройки Telegram\n"
+            "2. Нажмите 'Имя пользователя'\n"
+            "3. Введите желаемое имя пользователя"
+        )
         return
     
     if not is_manager(username=username, user_id=user_id_telegram):
-        managers_list = db.get_all_managers()
-        logger.warning(f"User {username} (ID: {user_id_telegram}) not found in managers list. Current managers: {managers_list}")
-        await update.message.reply_text("❌ У вас нет прав для выполнения этой команды. Обратитесь к администратору для добавления в список менеджеров.")
+        await update.message.reply_text(
+            "❌ У вас нет прав для выполнения этой команды.\n\n"
+            "Обратитесь к администратору для добавления в список менеджеров."
+        )
         return
     
     if len(context.args) != 2:
         await update.message.reply_text(
-            "❌ Неверный формат команды.\n\n"
-            "Использование: `/withdrawal <user_id> <code>`\n"
-            "Пример: `/withdrawal 123456 1234`\n\n"
-            "user_id - ID пользователя в системе 1win\n"
-            "code - код подтверждения от пользователя",
+            "❌ Неверный формат команды!\n\n"
+            "**Правильное использование:**\n"
+            "`/withdrawal <user_id> <code>`\n\n"
+            "**Примеры:**\n"
+            "`/withdrawal 123456 1234` - вывод для пользователя 123456 с кодом 1234\n"
+            "`/withdrawal 789012 5678` - вывод для пользователя 789012 с кодом 5678\n\n"
+            "**Что нужно:**\n"
+            "• user_id - ID пользователя в системе 1win\n"
+            "• code - 4-значный код подтверждения от пользователя\n\n"
+            "**Как получить код:**\n"
+            "Пользователь должен создать запрос на вывод в приложении 1win и получить код подтверждения.",
             parse_mode=ParseMode.MARKDOWN
         )
         return
@@ -405,18 +348,45 @@ async def withdrawal_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         code = int(context.args[1])
         
         if code < 0:
-            await update.message.reply_text("❌ Код должен быть положительным числом.")
+            await update.message.reply_text(
+                "❌ Код должен быть положительным числом!\n\n"
+                "Попробуйте ввести код снова, например: `/withdrawal 123456 1234`",
+                parse_mode=ParseMode.MARKDOWN
+            )
             return
+            
+        if len(str(code)) != 4:
+            await update.message.reply_text(
+                "⚠️ Внимание: код обычно состоит из 4 цифр.\n\n"
+                "Убедитесь, что код введен правильно.\n"
+                f"Ваш код: `{code}`\n\n"
+                "Если код правильный, проигнорируйте это сообщение.",
+                parse_mode=ParseMode.MARKDOWN
+            )
         
     except ValueError:
-        await update.message.reply_text("❌ Неверный формат данных. ID пользователя и код должны быть числами.")
+        await update.message.reply_text(
+            "❌ Неверный формат данных!\n\n"
+            "**Проверьте:**\n"
+            "• user_id должен быть целым числом (например: 123456)\n"
+            "• code должен быть числом (например: 1234)\n\n"
+            "**Правильный пример:**\n"
+            "`/withdrawal 123456 1234`",
+            parse_mode=ParseMode.MARKDOWN
+        )
         return
     
     # Show processing message
-    processing_msg = await update.message.reply_text("⏳ Обрабатываю вывод...")
+    processing_msg = await update.message.reply_text(
+        f"⏳ **Обрабатываю вывод...**\n\n"
+        f"👤 Пользователь: `{user_id}`\n"
+        f"🔐 Код: `{code}`\n"
+        f"🔄 Отправляю запрос в 1win...",
+        parse_mode=ParseMode.MARKDOWN
+    )
     
     # Log the API call attempt
-    logger.info(f"Making API call for withdrawal: user_id={user_id}, code={code}, api_key={'*' * 10 + API_KEY[-10:] if API_KEY else 'NOT_SET'}")
+    logger.info(f"Making API call for withdrawal: user_id={user_id}, code={code}")
     
     # Make API call
     try:
@@ -424,14 +394,24 @@ async def withdrawal_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         result = await client.process_withdrawal(user_id, code)
         
         # Update message with result
-        await processing_msg.edit_text(result["message"])
+        await processing_msg.edit_text(result["message"], parse_mode=ParseMode.MARKDOWN)
         
         # Log the transaction
         logger.info(f"Withdrawal request by {username}: user_id={user_id}, code={code}, success={result['success']}")
         
     except Exception as e:
         logger.error(f"Error in withdrawal command: {e}")
-        await processing_msg.edit_text(f"❌ Произошла ошибка при обработке вывода: {str(e)}")
+        await processing_msg.edit_text(
+            f"❌ **Произошла ошибка при обработке вывода**\n\n"
+            f"**Техническая информация:**\n"
+            f"`{str(e)}`\n\n"
+            f"💡 **Что делать:**\n"
+            f"• Убедитесь, что пользователь создал запрос на вывод в приложении 1win\n"
+            f"• Проверьте правильность кода подтверждения\n"
+            f"• Попробуйте еще раз через минуту\n"
+            f"• Обратитесь к администратору, если проблема повторяется",
+            parse_mode=ParseMode.MARKDOWN
+        )
 
 
  
